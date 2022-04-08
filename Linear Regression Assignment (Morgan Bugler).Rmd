@@ -1,0 +1,494 @@
+---
+title: "Summative assignment for ASML Regression"
+author: "Morgan George Alun Bugler (sxft32)"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+  html_notebook:
+    df_print: paged
+  word_document: default
+---
+
+
+# General Instructions
+
+Please go through the R notebook below, and carry out the requested tasks. You will provide all your answers directly into this .Rmd file. Add code into the R chunks where requested. You can create new chunks where required. Where text answers are requested, please add them directly into this document, typically below the R chunks, using R Markdown syntax as adequate.
+
+At the end, you will submit both your worked .Rmd file, and a `knitted' PDF version, through DUO.
+
+**Important**: Please ensure carefully whether all chunks compile, and also check in the knitted PDF whether all R chunks did *actually* compile, and all images that you would like to produce have *actually* been generated.  **An R chunk which does not compile will give zero marks, and a picture which does not exist will give zero marks, even if some parts of the required code are correct.**
+
+**Note**: It is appreciated that some of the requested analyses requires running R code which is not deterministic. So, you will not have full control over the output that is finally generated in the knitted document. This is fine. It is clear that the methods under investigation carry uncertainty, which is actually part of the problem tackled in this assignment. Your analysis should, however, be robust enough so that it stays in essence correct under repeated execution of your data analysis.
+
+# Reading in data
+
+We consider data from an industrial melter system. The melter is part of a disposal procedure, where a powder (waste material) is clad in glass. The melter vessel is
+continuously filled with powder, and raw glass is discretely introduced in the form of glass frit. This binary composition is heated by  induction coils, positioned around the melter vessel. Resulting from this heating procedure, the glass becomes
+molten homogeneously [(Liu et al, 2008)](https://aiche.onlinelibrary.wiley.com/doi/full/10.1002/aic.11526).
+
+Measurements of 15 temperature sensors `temp1`, ..., `temp15` (in $^{\circ} C$), the power in four
+induction coils `ind1`,...,  `ind4`,  the `voltage`, and the `viscosity` of the molten glass, were taken every 5 minutes. The sample size available for our analysis is $n=900$.
+
+We use the following R chunk to read the data in
+
+```{r}
+melter<-read.table("http://maths.dur.ac.uk/~dma0je/Data/melter.dat", header=TRUE)
+
+```
+
+If this has gone right, then the following code
+```{r}
+is.data.frame(melter)
+dim(melter)
+```
+
+should tell you that `melter` is a data frame of dimension $900 \times 21$. Otherwise something has gone wrong, and you need to start again.
+
+To get more familiar with the data frame, please also execute
+
+```{r}
+head(melter)
+colnames(melter)
+boxplot(melter)
+```
+
+
+# Task 1: Principal component analysis (10 marks)
+
+We consider initially only the 15 variables representing the temperature sensors. Please create a new data frame, called `Temp`, which contains only these 15 variables. Then carry out a principal component analysis. (Use your judgement on whether, for this purpose,  the temperature variables require scaling or not). Produce a screeplot, and also answer the following questions: How many principal components are needed to capture 90% of the total variation? How many are needed to capture 98%?
+
+**Answer:**
+
+```{r}
+set.seed(2022)
+#creating the new data frame of temperatures 
+Temp <- data.frame(cbind(melter$temp1, melter$temp2, melter$temp3, melter$temp4, melter$temp5, 
+                         melter$temp6, melter$temp7, melter$temp8, melter$temp9, melter$temp10, 
+                         melter$temp11, melter$temp12, melter$temp13, melter$temp14, 
+                         melter$temp15)) 
+
+# We need to keep the means and sd.'s for later `unscaling':
+temp_m <- apply(Temp, 2,mean)
+temp_s <- apply(Temp, 2, sd)
+
+# scaling the temps
+Temp<-scale(Temp)
+
+
+#performing the pca analysis 
+pca <- princomp(Temp)
+pca.eigenvectors <- pca$loadings
+pca.eigenvalues <- pca$sdev * pca$sdev
+
+#graphing the results 
+reduced.pca.var.per <- round(pca.eigenvalues/sum(pca.eigenvalues)*100, 1)
+cumulative_var <- data.frame(cumsum(reduced.pca.var.per))
+plot(cumsum(reduced.pca.var.per), xlab = "Temperature features from main data set", 
+     ylab = "cumulative contribution to the variance of the reduced data set")
+screeplot(pca, main = "scree plot of PC analysis")
+
+threshold_identified.lower = FALSE
+threshold_identified.higher = FALSE 
+required_components.90 = 0
+required_components.98 = 0
+
+dim <- dim(cumulative_var)
+component_count <- dim[1]
+
+for (i in 1:component_count){
+  if (threshold_identified.higher == FALSE){
+    if (threshold_identified.lower == FALSE){
+      if (cumulative_var[i,1] > 90){
+        required_components.90 = i
+        threshold_identified.lower = TRUE
+      }
+    }
+    if (cumulative_var[i,1] > 98){
+      required_components.98 = i
+      threshold_identified.higher = TRUE
+    }
+  }
+}
+cat("Number of components required for 90% variance is ", required_components.90, "\n")
+
+cat("Number of components required for 98% variance is ", required_components.98)
+
+```
+
+
+# Task 2: Multiple linear regression (20 marks)
+
+We consider from now on, and for the remainder of this assignment, `viscosity` as the response variable.
+
+Fit a linear regression model, with `viscosity` as response variable, and all other variables as predictors, and  produce the `summary` output of the fitted model. In this task, we are mainly interested in the standard errors of the estimated coefficients. Create a vector, with name `melter.fit.sd`, which contains the standard errors of all estimated coefficients, except the intercept. (So, this vector should have length 20). Then produce a `barplot` of these standard errors (where the height of each bar indicates the value of the standard error of the respective coefficients). Please use blue color to fill the bars of the barplot.
+
+**Answer:**
+
+```{r}
+require(glm2)
+require(dplyr)
+
+melter.model.linear <- lm(viscosity ~., data = melter)
+summary(melter.model.linear)
+  temp <- data.frame(summary(melter.model.linear)$coefficients[, 2])
+melter.fit.sd <- t(temp)
+
+melter.fit.sd <- t(data.frame(melter.fit.sd[-c(1)]))
+
+colnames(melter.fit.sd) <- colnames(melter[-c(1)])
+
+barplot(melter.fit.sd, col = "blue", las = 2, xlab = "model parameters", ylab = "standard error",
+        main = "standard errors for model parameter coefficients")
+
+mean(melter.fit.sd)
+```
+
+Now repeat this analysis, but this time using a Bayesian linear regression. Use adequate methodology to fit the Bayesian version of the linear model considered above.  It is your choice whether you would like to employ ready-to-use R functions which carry out this task for you, or whether you would like to implement this procedure from scratch, for instance using `jags`.
+
+In either case, you need to be able to extract posterior draws of the estimated parameters from the fitted object, and compute their standard deviations. Please save these standard deviations, again excluding that one for the intercept, into a vector `melter.bayes.sd`.  Produce now a barplot which displays both of `melter.fit.sd` and `melter.bayes.sd` in one plot, and allows a direct comparison  of the frequentist and Bayesian standard errors (by having the corresponding bars for both methods directly side-by-side, with the Bayesian ones in red color). The barplot should be equipped with suitable labels and legends to enable good readability.
+
+Comment on the outcome.
+
+**Answer**:
+
+```{r}
+require(rjags)
+
+bayesian_model_string <- "model{
+  for(i in 1:p){
+    Y[i] ~ dnorm(mu[i], tau)   # tau = precision=inverse variance
+    mu[i] <- beta0+beta%*%X[i,]
+  }
+  # Prior distribution on mean
+    beta0 ~ dnorm(0, 0.0001);
+    for (j in 1:p){
+      beta[j]~  dnorm(0, 0.0001)
+    }
+    tau  ~ dgamma(0.01, 0.01)
+    sigma <- 1/sqrt(tau)
+   
+}"
+
+
+x_params <- data.frame(melter[,2:21])
+y_params <- data.frame(melter[,1])
+data_size <- dim(x_params)
+
+print(data_size)
+print(dim(y_params))
+
+# We need to keep the means and sd.'s for later `unscaling':
+m <- apply(x_params, 2,mean)
+S <- apply(x_params, 2, sd)
+
+# This is the actual scaling step:
+x_params.scaled<-scale(x_params)
+
+```
+```{r}
+melter.model.bayes <- jags.model(textConnection(bayesian_model_string), 
+    data = list(Y = as.numeric(unlist(y_params)), X = x_params.scaled, p = data_size[2])
+    )
+
+update(melter.model.bayes, 10000)
+
+summary(melter.model.bayes)
+
+melter.model.bayes$samples = coda.samples(melter.model.bayes, c("beta0", "beta", "sigma"), 10000)
+
+#obtaining the standardarized standard errors
+test <- data.frame(summary(melter.model.bayes$sample)[1])
+
+#conveting the standard errors
+melter.bayes.sd <- t(data.frame(test[3]))/S 
+
+melter.bayes.sd <- t(data.frame(melter.bayes.sd[-c(21,22)]))
+
+results <- data.frame(matrix(c(melter.fit.sd, melter.bayes.sd), nrow = 2, byrow = TRUE))
+
+colnames(results)<- cbind("voltage", "ind1", "ind2", "ind3", "ind4", "temp1", "temp2", "temp3",
+                          "temp4", "temp5", "temp6", "temp7", "temp8", "temp9", "temp10",
+                          "temp11", "temp12", "temp13", "temp14", "temp15")
+
+barplot(as.matrix(results), col = c("blue", "red"), beside = TRUE, las = 2, 
+        xlab = "model parameters", ylab = "standard error",
+        main = "Standard errors in the different features \n 
+                of the Frequentist and Bayesian approaches")
+legend(x = "topright", legend = c("Frequentist", "Bayesian"), fill = c("blue", "red")) 
+```
+
+The graph as shown indicates that the model fitting the Bayesian approach has the smallest errors. This is likely as the bayesian approach uses bayesian statitics to best fit the model where as the frequency approach only works off fixed values. However, the errors on the Bayesian do seem relatively small so there may be a slight mistake in unscaling the results.
+
+# Task 3: The Lasso (20 marks)
+
+We would like to reduce the dimension of the currently 20-dimensional space of predictors. We employ the LASSO to carry out this task. Carry out this analysis, which should feature the following elements:
+
+ * the trace plot of the fitted coefficients, as a function of $\log(\lambda)$, with $\lambda$ denoting the penalty parameter;
+ * a graphical illustration of the cross-validation to find $\lambda$;
+ * the chosen value of $\lambda$ according to the `1-se` criterion, and a brief explanation of what this criterion actually does;
+ * the fitted coefficients according to this choice of $\lambda$.
+
+**Answer:**
+
+```{r}
+require(glmnet)
+x_params <- as.matrix(melter[,2:21])
+y_params <- as.matrix(melter[,1])
+
+melter.model.lasso <- glmnet(x_params, as.numeric(unlist(y_params)), family = "gaussian", alpha = 1)
+plot(melter.model.lasso, xvar = "lambda", label = TRUE)
+
+melter.model.lasso.cv <- cv.glmnet(x = x_params, y = y_params, alpha = 1, nfolds = 20)
+plot(melter.model.lasso.cv)
+
+fitted_lambda <- melter.model.lasso.cv$lambda.1se
+cat("the selected value of lambda is ", fitted_lambda)
+
+melter.model.lasso.refined <- glmnet(x_params, as.numeric(unlist(y_params)), 
+                                     family = "gaussian", lambda = fitted_lambda, alpha = 1)
+
+fit.cofs <- data.frame(summary(melter.model.lasso.refined$beta))
+
+coefs <- t(as.matrix(coef(melter.model.lasso.refined, s="lambda.min")))
+
+coefs.temp <- subset(coefs, coefs[,1] != 0)
+coefs.red <- t(data.frame(coefs.temp[-1]))
+colnames(coefs.red) <- colnames(x_params) 
+
+
+barplot(abs(coefs.red), las = 2, xlab = "model parameters", ylab = "standard error", 
+        main = cat("model parameters based on a model with a set lambda value of ",
+                   fitted_lambda))
+
+```
+
+This criterion ensures the lambda which is taken gives a result which is in 1 standard deviation of the mean. This means that this criterion can be used to ensure the model has a suitable high level chance of being reproducable. 
+
+Next, carry out a Bayesian analysis of the lasso.  Visualize the full posterior distributions of all coefficients (except the intercept) in terms of boxplots, and also visualize the resulting standard errors of the coefficients, again using a barplot (with red bars).
+
+Give an interpretation of the results, especially in terms of the evidence that this analysis gives in terms of inclusion/non-inclusion of certain variables.
+
+**Answer:**
+
+```{r}
+require(monomvn)
+
+melter.model.blas <- blasso(x_params, melter$viscosity)
+melter.model.blas
+
+#collected the values / distributions of the 
+blasso.cof <- data.frame(melter.model.blas$beta)
+
+colnames(blasso.cof)<- cbind("voltage", "ind1", "ind2", "ind3", "ind4", "temp1", "temp2",
+                             "temp3", "temp4", "temp5", "temp6", "temp7", "temp8", "temp9",
+                             "temp10", "temp11", "temp12", "temp13", "temp14", "temp15")
+
+#plotting the box plot of the coefficients 
+boxplot(blasso.cof, col = "red", las = 2, xlab = "model parameters",
+        ylab = "parameter coefficients")
+
+blasso.se <- apply(blasso.cof, 2, sd)
+
+barplot(blasso.se, col = "red", las = 2, 
+        main = "errors for the parameters in a lasso model according to bayesian statistics",
+        xlab = "model parameters", ylab = "standard error")
+
+```
+
+The graph above indicates there are 8 parameters that do not affect, or have a negligible contribution to the model. The factors which the analysis suggest are not important to the model are; voltage, ind1, ind3, temp5, temp 7, temp10, temp11 and temp13. This indicates these can be removed from the model without having a significant impact on the model accuracy. However some parameters which need to be included according to this analysis have a large standard error. This model indicates there are 13 important factors which is close to 11 identified by Liu et al., 2008. 
+
+# Task 4: Bootstrap (20 marks)
+
+A second possibility to assess uncertainty of any estimator is the Bootstrap. Implement a nonparametric bootstrap procedure to assess the uncertainty of your frequentist lasso fit from Task 3.
+
+Produce boxplots of the full bootstrap distributions for all coefficients (similar as in Task 3).
+
+Then, add (green) bars with the resulting standard errors to the bar plot produced in Task 3, allowing for comparison between Bootstrap and Bayesian standard errors. Interpret the results.
+
+**Answer:**
+
+
+```{r}
+
+B <- 1000 # ideally 999 or so, but used 199 here for quick compilation
+n <- dim(x_params)[1]
+Ynew <- matrix(0, n, B)
+Y<- melter$viscosity
+Xnew<-list()
+p <- dim(x_params)[2]
+
+for (b in 1:B){
+  j<-sample(n, replace=TRUE)
+  Xnew[[b]]<- x_params[j,2:7]
+  Ynew[,b]<-Y[j]
+}
+
+model.ridge.boot<- data.frame(rows =B,  cols =p)
+
+for (b in 1:B){
+  model.cv<- cv.glmnet(Xnew[[b]], Ynew[,b], alpha=0 )
+  model.bridge <-  coef(model.cv , s="lambda.1se" )
+  temp_store <- unlist(as.matrix(model.bridge))
+  for (c in 2:p){
+    model.ridge.boot[b,c] <- temp_store[c]
+  }
+}
+```
+
+```{r}
+library(ggplot2)
+
+model.ridge.boot[is.na(model.ridge.boot)] = 0
+
+colnames(model.ridge.boot)<- cbind("voltage", "ind1", "ind2", "ind3", "ind4", "temp1",
+                                   "temp2", "temp3", "temp4", "temp5", "temp6", "temp7",
+                                   "temp8", "temp9", "temp10", "temp11", "temp12",
+                                   "temp13", "temp14", "temp15")
+
+lasso.errors <- data.frame(matrix(c(blasso.cof, model.ridge.boot), nrow = 2, byrow = TRUE))
+
+boxplot(model.ridge.boot, col = c("green"), beside = TRUE, las = 2, xlab = "model parameters",
+        ylab = "parameter coefficients", ylim = c(-15, 15))
+
+model.ridge.boot.sd<- apply(model.ridge.boot, 2, sd)
+
+results <- data.frame(matrix(c(blasso.se, model.ridge.boot.sd), nrow = 2, byrow = TRUE))
+
+colnames(results)<- cbind("voltage", "ind1", "ind2", "ind3", "ind4", "temp1", "temp2",
+                          "temp3", "temp4", "temp5", "temp6", "temp7", "temp8", "temp9",
+                          "temp10", "temp11", "temp12", "temp13", "temp14", "temp15")
+
+barplot(as.matrix(results), col = c("red", "green"), beside = TRUE, las = 2,
+        xlab = "model parameters", ylab = "standard error", 
+        main = "Errors for Bayesian Lasso and Bayesian Bootstrapping") # , log = "y")
+legend(x = "topright", legend = c("Bayesian Lasso", "Bayesian bootstrapping"), 
+       fill = c("red", "green"))
+
+
+```
+
+The parameter estimates from the coefficients indicate that the induction coils will control the system and the initial two temperature stations. This may be suitable as the temperatures are likely to be an intermediate process to the system. In my opinion I would suggest this model may be too biased for the system to achieve a suitable model for future predictions. The reason for this is heat distributes differently depending on the surrounding area, as 13 of the temperature components are not considered here, the results indicate this dependency is not captured. 
+
+One clear difference between this model and the previous models, is that the voltage has very large standard error on the voltage parameter which indicates it is likely to have a flat and wide prior distribution. 
+
+# Task 5: Model choice (10 marks)
+
+Based on all considerations and analyses carried out so far, decide on a suitable model that you would present to a client, if you had been the statistical consultant.
+
+Formulate the model equation in mathematical notation.
+
+Refit your selected model using ordinary Least Squares. Carry out some residual diagnostics for this fitted model, and display the results. Discuss these briefly.
+
+**Answer:**
+
+From looking at the results before, the graphs indicate the best model for this problem is the lasso frequency model with Bayesian analysis has the best fit as it has a reduced number of parameters and these span the voltage, induceds and the temperature features of the data set and has the second lowest standard error for the parameters. 
+
+```{r}
+
+test_data <- data.frame(cbind(melter$viscosity, melter$voltage, melter$ind2, melter$ind4,
+                              melter$temp1, melter$temp2, melter$temp3, melter$temp4,
+                              melter$temp6, melter$temp8, melter$temp9, melter$temp12,
+                              melter$temp14, melter$temp15))
+
+dim(test_data)
+melter.model.selected <- lm(melter$viscosity ~., test_data)
+
+melter.model.selected$pred <- predict(melter.model.selected, test_data, type = "response")
+summary(melter.model.selected)
+
+dif <- melter.model.selected$pred - melter$viscosity
+
+hist(dif, breaks = 20, freq = FALSE,  
+     main = "errors in the prediction compared to the true viscosity", xlab = "error")
+lines(density(dif)) #, add = TRUE)
+
+```
+
+The selected model has very narrow ranmge of errors and the corresponding r value is equal to 1.
+
+The model equation is
+
+$$
+viscosity = 8.413*10^{-17}voltage+1.413*10^{-15}ind2+1.761*10^{-16}ind4+
+5.287*10^{-16}temp1-1.195*10^{-15}temp2- \\
+7.591*10^{-16}temp3-5.75*10^{-16}temp4+5.325*10^{-16}temp6+2.343*10^{-15}
+temp8-1.513*10^{-16}temp9- \\ 1.29*10^{-16}temp12+2.063*10^{-15}temp14-
+2.759*10^{-15} temp15+6.63*10^{-13}
+$$
+
+
+We will refer to the model produced in this task as (T5) henceforth.
+
+
+# Task 6: Extensions (20 marks)
+
+For this task, take the model (T5) as the starting point.  Then consider extensions of your model in TWO of the following THREE directions (of your choice).
+
+
+(1) Replace the temperature sensor variables in model (T5) by an adequate number of principal components (see Task 1).
+
+(2) Replace the `voltage`, and the remaining induction variables, by nonparametric terms.
+
+(3) Consider a transformation of the response variable `viscosity`.
+
+Each time, report the fitted model through adequate means. Discuss whether the corresponding extension is useful, giving quantitative or graphical evidence where possible.
+
+Give a short discussion on whether any of your extensions have led to an actual improvement compared to model (T5).
+
+**Answer:**
+
+model for the first choice 
+
+```{r}
+test_data.pca <- data.frame(cbind(melter$viscosity, melter$voltage, melter$ind2, melter$ind4,
+                                  pca$scores[,1], pca$scores[,2], pca$scores[,3],
+                                  pca$scores[,4], pca$scores[,5], pca$scores[,6],
+                                  pca$scores[,7], pca$scores[,8], pca$scores[,9],
+                                  pca$scores[,10]))
+
+melter.model.selected_pca <- lm(melter$viscosity ~., test_data.pca)
+summary(melter.model.selected_pca)
+
+melter.model.selected_pca$pred <- predict(melter.model.selected_pca, test_data, 
+                                          type = "response")
+
+dif_pca <- melter.model.selected_pca$pred - melter$viscosity
+
+hist(dif, freq = FALSE, breaks = 10, xlim = c(-4e-11, 2e-11), col = "red",
+     main = "prediction error of T5 model and the modified version \n with temperature
+     PCA components", xlab = "error")
+hist(dif_pca, freq = FALSE, breaks = 40, xlim = c(-4e-11, 2e-11), col = "orange", add = TRUE)
+legend(x = "topleft", legend = c("T5", "T5 with temperature replaced with PCA"), 
+       fill = c("red", "orange"))
+```
+
+As show in the graph above the linear model has a small range of errors near 0 with most of them shifted towards negative values. When the model with the temperatures replaced with their PCA components indicate the values are considerably higher than the predict which indicate this modified model is relatively bias. Although both models have a different bias, they both seem to show a greater bias towards their lower end relative to the median. However, this new model did not influence the R squared value.
+
+```{r}
+viscosity <- melter$viscosity
+viscosity <- ((viscosity^fitted_lambda)-1)/fitted_lambda
+     
+melter.mod <- melter
+melter.mod$viscosity <- viscosity
+
+melter.model.selected_trans <- lm(melter.mod$viscosity ~., test_data.pca)
+
+melter.model.selected_trans$pred <- predict(melter.model.selected_trans, test_data,
+                                            type = "response")
+summary(melter.model.selected_trans)
+
+dif_trans <- melter.model.selected_trans$pred - melter.mod$viscosity
+
+hist(dif_trans, freq = FALSE, breaks = 40, 
+    main = "errors associated with the prediction of the transform of
+     the predicted variable", xlim = c(-8.2e17, 0), col = "black",
+    xlab = "error") 
+
+legend(x = "topright", legend = c("T5 with transformation of viscosity"), 
+       fill = c("black"))
+
+
+```
+
+The t5 model with the modification of the response variable has increased the error margin significantly, under predicts the response variable even more than the model where the temperatures are replaced with most significant temperature principle components. Therefore, this indicates the original t5 model did the best out of the t5 and the two extensions applied here. 
